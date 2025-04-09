@@ -1,0 +1,94 @@
+name: 🏗️ App Module Runner
+# this is used by the apps themselves to deploy
+on:
+  workflow_call:
+    inputs:
+      cmd:
+        description: Command to run
+        type: string
+        default: plan
+      environment:
+        description: Stage/Environment to deploy to
+        type: string
+        default: dev01
+      tag:
+        description: |
+          This can be any actual image tag to use. Two special values are supported:
+          - current: This will use the current image tag running in the environment
+          - ref: This will use the current ref as the image tag
+        type: string
+        default: ref
+    secrets:
+      DUPLO_TOKEN:
+        description: Duplo Token
+        required: true
+jobs:
+  module:
+    name: ${{ inputs.cmd }} ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+    env:
+      DUPLO_HOST: ${{ vars.DUPLO_HOST }}
+      DUPLO_TOKEN: ${{ secrets.DUPLO_TOKEN }}
+      DUPLO_TENANT: ${{ inputs.environment }}
+      MODULE_DIR: terraform
+    steps:
+
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Duplocloud
+      uses: duplocloud/actions@main
+      with:
+        admin: true
+
+    - name: Get Tag
+      id: setup
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
+        COMMAND: ${{ inputs.cmd }}
+        TAG: ${{ inputs.tag }}
+        APP_NAME: ${{ github.event.repository.name }}
+      run: |
+        # discover the tag if one is not given
+        if [ "$TAG" == "ref" ]; then
+          TAG="$(echo ${GITHUB_REF##*/} | sed -e 's/\//_/g')"
+        elif [ "$TAG" == "current" ]; then
+          TAG=$(duploctl service find ${APP_NAME} -o string -q Template.Containers[0].Image  | cut -d: -f2)
+        fi
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        cat <<EOF >> $GITHUB_STEP_SUMMARY
+        Running ${COMMAND} to ${ENVIRONMENT} with tag ${TAG}
+        EOF
+
+    - name: Setup Terraform
+      id: terraform
+      uses: duplocloud/actions/setup-terraform@main
+
+    - name: Setup Module
+      id: init
+      uses: duplocloud/actions/terraform-module@main
+      with:
+        module: ${{ env.MODULE_DIR }}
+        test: false
+        fmt: true
+        validate: true
+  
+    - name: Execute Module
+      id: execute
+      uses: duplocloud/actions/terraform-exec@main
+      env:
+        TF_VAR_tag: ${{ steps.setup.outputs.tag }}
+      with:
+        module: ${{ env.MODULE_DIR }}
+        command: ${{ inputs.cmd }}
+        workspace: ${{ inputs.environment }}
+
+    - uses: borchero/terraform-plan-comment@v2
+      if: inputs.cmd == 'plan'
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        planfile: ${{ steps.execute.outputs.planfile }}
+        working-directory: ${{ env.MODULE_DIR }}
+  

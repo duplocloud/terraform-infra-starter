@@ -1,0 +1,48 @@
+name: 🏰 Infrastructure Module
+
+on:
+  pull_request:
+    paths: 
+    - modules/infrastructure/**
+    branches:
+    - main
+  push: 
+    paths: 
+    - modules/infrastructure/**
+    branches:
+    - main
+  workflow_run:
+    workflows: 
+    - 🪄 Portal Module
+    branches: 
+    - main
+    types: 
+    - completed
+  workflow_dispatch:
+    inputs:
+      workspace:
+        description: |
+          Name of the infrastructure module instance. 
+          Uses the DUPLO_INFRA by default if this is not set. 
+        type: string
+        required: false
+      cmd:
+        description: Command to run
+        type: choice
+        default: plan
+        options:
+        - plan
+        - apply
+        - destroy
+concurrency: 
+  group: infrastructure-${{ inputs.workspace || vars.DUPLO_INFRA }}
+jobs:
+  
+  module:
+    name: Infrastructure
+    uses: ./.github/workflows/tf-module.yml
+    secrets: inherit
+    with:
+      cmd: ${{ github.event_name == 'pull_request' && 'plan' || inputs.cmd || 'apply' }}
+      module: infrastructure
+      workspace: ${{ inputs.workspace || vars.DUPLO_INFRA }}

@@ -1,0 +1,64 @@
+name: Promote Version to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: |
+          Release actions such as patch, minor, major.
+        default: patch
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+      push:
+        description: |
+          Push the changes to the repository.
+        default: false
+        type: boolean
+
+jobs:
+
+  promote:
+    name: Promote
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.results.outputs.tag }}
+      cmd: ${{ steps.results.outputs.cmd }}
+    steps:
+
+    - name: Create GitHub App Token
+      uses: actions/create-github-app-token@v1
+      id: app-token
+      with:
+        app-id: ${{ vars.GH_APP_ID }}
+        private-key: ${{ secrets.GH_APP_KEY }}
+
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        token: ${{ steps.app-token.outputs.token }}
+    
+    - name: Bump Version
+      id: bump
+      uses: duplocloud/version-bump@main
+      with:
+        token:  ${{ steps.app-token.outputs.token }}
+        version: ${{ inputs.action }}
+        push: ${{ inputs.push }}
+
+    - name: Results
+      id: results
+      env:
+        PUSH: ${{ inputs.push }}
+        TAG: ${{ steps.bump.outputs.tag }}
+      run: |
+        # if the PUSH is true then the command is apply else plan
+        if [ "${PUSH}" == "true" ]; then
+          echo "cmd=apply" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+        else
+          echo "cmd=plan" >> $GITHUB_OUTPUT
+          echo "tag=${GITHUB_REF}" >> $GITHUB_OUTPUT
+        fi

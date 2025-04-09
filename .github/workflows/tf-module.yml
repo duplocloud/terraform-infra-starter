@@ -1,0 +1,123 @@
+name: 🏗️ Terraform Runner
+on:
+  workflow_dispatch:
+    inputs:
+      cmd:
+        description: Command to run
+        type: choice
+        default: plan
+        options:
+        - plan
+        - apply
+        - destroy
+      module:
+        description: Module to run
+        type: choice
+        default: app
+        options:
+        - portal
+        - infrastructure
+        - shared
+        - devops
+        - tenant
+      workspace:
+        description: Environment to deploy to
+        type: string
+        required: true
+  workflow_call:
+    inputs:
+      cmd:
+        description: Command to run
+        type: string
+        default: plan
+      module:
+        description: Module to run
+        type: string
+        default: app
+      workspace:
+        description: TF workspace to deploy to
+        type: string
+        default: dev01
+      ref:
+        description: The git ref to checkout
+        type: string
+        required: false
+    secrets:
+      DUPLO_TOKEN:
+        description: Duplo Token
+        required: true
+      GH_APP_KEY:
+        description: GitHub App Key
+        required: true
+jobs:
+  module:
+    name: ${{ inputs.cmd }} ${{ inputs.workspace }} ${{ inputs.module }}
+    
+    runs-on: ubuntu-latest
+    env:
+      DUPLO_HOST: ${{ vars.DUPLO_HOST }}
+      DUPLO_TOKEN: ${{ secrets.DUPLO_TOKEN }}
+      MODULE: ${{ inputs.module }}
+      MODULE_DIR: modules/${{ inputs.module }}
+    steps:
+
+    - name: Config Dir
+      id: config
+      run: |
+        # if the MODULE is devops then the config is actually the portal
+        export CONFIG_DIR
+        if [ "${MODULE}" == "devops" ]; then
+          CONFIG_DIR="config/portal"
+        else
+          CONFIG_DIR="config/${{ inputs.module }}"
+        fi
+        echo "path=${CONFIG_DIR}" >> $GITHUB_OUTPUT
+
+    - name: Init Github App
+      uses: actions/create-github-app-token@v1
+      id: gha-app
+      with:
+        app-id: ${{ vars.GH_APP_ID }}
+        private-key: ${{ secrets.GH_APP_KEY }}
+
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ steps.gha-app.outputs.token }}
+        ref: ${{ inputs.ref }}
+
+    - name: Setup Duplocloud
+      uses: duplocloud/actions@main
+      with:
+        admin: true
+
+    - name: Setup Terraform
+      id: terraform
+      uses: duplocloud/actions/setup-terraform@main
+
+    - name: Setup Module
+      id: init
+      uses: duplocloud/actions/terraform-module@main
+      with:
+        module: ${{ env.MODULE_DIR }}
+        test: false
+        fmt: false
+        validate: false
+  
+    - name: Execute Module
+      id: execute
+      uses: duplocloud/actions/terraform-exec@main
+      with:
+        module: ${{ env.MODULE_DIR }}
+        command: ${{ inputs.cmd }}
+        workspace: ${{ inputs.workspace }}
+        config: ${{ steps.config.outputs.path }}
+
+    - uses: borchero/terraform-plan-comment@v2
+      if: inputs.cmd == 'plan'
+      with:
+        header: ${{ inputs.module }} ${{ inputs.workspace }}
+        token: ${{ steps.gha-app.outputs.token }}
+        planfile: ${{ steps.execute.outputs.planfile }}
+        working-directory: ${{ env.MODULE_DIR }}
+  

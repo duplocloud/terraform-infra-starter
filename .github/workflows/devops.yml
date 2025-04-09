@@ -1,0 +1,41 @@
+name: 🚰💦 Devops Module
+
+on:
+  pull_request:
+    paths: 
+    - modules/devops/**
+    branches:
+    - main
+  push: 
+    paths: 
+    - modules/devops/**
+    branches:
+    - main
+  workflow_run:
+    workflows: 
+    - 🪄 Portal Module
+    branches: 
+    - main
+    types: 
+    - completed
+  workflow_dispatch:
+    inputs:
+      cmd:
+        description: Command to run
+        type: choice
+        default: plan
+        options:
+        - plan
+        - apply
+concurrency: 
+  group: devops
+jobs:
+
+  module:
+    name: Devops Module
+    uses: ./.github/workflows/tf-module.yml
+    secrets: inherit
+    with:
+      cmd: ${{ github.event_name == 'pull_request' && 'plan' || inputs.cmd || 'apply' }}
+      module: devops
+      workspace: duplocloud

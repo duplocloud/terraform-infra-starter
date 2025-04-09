@@ -1,0 +1,35 @@
+name: 🪄 Portal Module
+
+on:
+  pull_request:
+    paths: 
+    - modules/portal/**
+    branches:
+    - main
+  push: 
+    paths: 
+    - modules/portal/**
+    branches:
+    - main
+  workflow_dispatch:
+    inputs:
+      cmd:
+        description: Command to run
+        type: choice
+        default: plan
+        options:
+        - plan
+        - apply
+concurrency: 
+  group: portal
+jobs:
+
+  module:
+    name: Portal Module
+    uses: ./.github/workflows/tf-module.yml
+    secrets: inherit
+    with:
+      cmd: ${{ github.event_name == 'pull_request' && 'plan' || inputs.cmd || 'apply' }}
+      module: portal
+      # workspace is the org name
+      workspace: duplocloud

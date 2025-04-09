@@ -1,0 +1,48 @@
+name: 🍭 Shared Module
+
+on:
+  pull_request:
+    paths: 
+    - modules/shared/**
+    branches:
+    - main
+  push: 
+    paths: 
+    - modules/shared/**
+    branches:
+    - main
+  workflow_run:
+    workflows: 
+    - 🏰 Infrastructure Module
+    branches: 
+    - main
+    types: 
+    - completed
+  workflow_dispatch:
+    inputs:
+      workspace:
+        description: |
+          Name of the shared module instance. 
+          Uses the DUPLO_TENANT_SHARED by default if this is not set. 
+        type: string
+        required: false
+      cmd:
+        description: Command to run
+        type: choice
+        default: plan
+        options:
+        - plan
+        - apply
+        - destroy
+concurrency: 
+  group: shared-${{ inputs.workspace || vars.DUPLO_TENANT_SHARED }}
+jobs:
+  
+  module:
+    name: Shared Module
+    uses: ./.github/workflows/tf-module.yml
+    secrets: inherit
+    with:
+      cmd: ${{ github.event_name == 'pull_request' && 'plan' || inputs.cmd || 'apply' }}
+      module: shared
+      workspace: ${{ inputs.workspace || vars.DUPLO_TENANT_SHARED }}
